@@ -1,0 +1,66 @@
+name: nats-sync-lab
+
+services:
+  nats:
+    image: nats:2.14-alpine
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - ./infra/nats/nats-server.conf:/etc/nats/nats-server.conf:ro
+      - nats-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8222/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  postgres-a:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: backend_a
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg-a-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d backend_a"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  postgres-b:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: backend_b
+    ports:
+      - "5434:5432"
+    volumes:
+      - pg-b-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d backend_b"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  nats-cli:
+    image: natsio/nats-box:latest
+    profiles: ["tools"]
+    depends_on:
+      nats:
+        condition: service_healthy
+    entrypoint: ["nats", "--server", "nats://nats:4222"]
+    command: ["stream", "ls"]
+
+volumes:
+  nats-data:
+  pg-a-data:
+  pg-b-data:

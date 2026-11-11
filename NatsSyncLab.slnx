@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NatsSyncLab.BackendA/NatsSyncLab.BackendA.csproj" />
+    <Project Path="src/NatsSyncLab.BackendB/NatsSyncLab.BackendB.csproj" />
+    <Project Path="src/NatsSyncLab.BuildingBlocks/NatsSyncLab.BuildingBlocks.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NatsSyncLab.Tests/NatsSyncLab.Tests.csproj" />
+  </Folder>
+</Solution>

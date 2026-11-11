@@ -1,0 +1,26 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+artifacts/
+TestResults/
+*.trx
+
+## Environment / local overrides
+.env
+.env.*
+!.env.example
+docker-compose.override.yml
+appsettings.Local.json
+
+## Logs
+*.log
+logs/
+
+## OS
+.DS_Store
+Thumbs.db
