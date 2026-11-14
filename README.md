@@ -4,6 +4,8 @@ A local .NET 10 and React lab showing how a write-side service can replicate dat
 
 Backend A owns products. Every product write commits to PostgreSQL together with an outbox event. A background relay publishes that event to JetStream, and Backend B applies it to its own replica database through an idempotent consumer.
 
+For a code-level walkthrough of the processes, files, recovery behavior, and failure scenarios, see [SYNC_FLOW.md](./SYNC_FLOW.md).
+
 ```text
 Browser
   |-- http://localhost:5173 -> Backend A UI (Vite) -> http://localhost:5001 -> PostgreSQL A
@@ -454,6 +456,7 @@ docker-compose.yml              NATS, PostgreSQL, NATS CLI, Natscope
 
 ## Further reading
 
+- [SYNC_FLOW.md](./SYNC_FLOW.md) - code-level A -> NATS -> B flow, file map, and recovery scenarios
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - broader modular-monolith architecture background
 - [REPLICATION.md](./REPLICATION.md) - guide for scaffolding the architecture
 - [nats.md](./nats.md) - NATS JetStream and idempotent-consumer notes
