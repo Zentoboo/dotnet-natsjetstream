@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\NatsSyncLab.BackendB.Module.Customers.Domain\NatsSyncLab.BackendB.Module.Customers.Domain.csproj" />
+    <ProjectReference Include="..\NatsSyncLab.BackendB.Module.Customers.Application\NatsSyncLab.BackendB.Module.Customers.Application.csproj" />
+    <ProjectReference Include="..\..\..\..\SharedKernel\NatsSyncLab.SharedKernel\NatsSyncLab.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\..\SharedKernel\NatsSyncLab.BackendB.SharedKernel\NatsSyncLab.BackendB.SharedKernel.csproj" />
+  </ItemGroup>
+</Project>

@@ -60,7 +60,20 @@ services:
     entrypoint: ["nats", "--server", "nats://nats:4222"]
     command: ["stream", "ls"]
 
+  natscope:
+    image: ghcr.io/dmit-4884/natscope:latest
+    profiles: ["tools"]
+    ports:
+      - "127.0.0.1:4280:4280"
+    volumes:
+      - natscope-data:/data
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   nats-data:
   pg-a-data:
   pg-b-data:
+  natscope-data:

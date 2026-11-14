@@ -1,0 +1,21 @@
+{
+  "solution": {
+    "path": "NatsSyncLab.slnx",
+    "projects": [
+      "SharedKernel\\NatsSyncLab.SharedKernel\\NatsSyncLab.SharedKernel.csproj",
+      "BackendA\\NatsSyncLab.BackendA.AppHost\\NatsSyncLab.BackendA.AppHost.csproj",
+      "BackendA\\SharedKernel\\NatsSyncLab.BackendA.SharedKernel\\NatsSyncLab.BackendA.SharedKernel.csproj",
+      "BackendA\\Module\\Products\\NatsSyncLab.BackendA.Module.Products.Domain\\NatsSyncLab.BackendA.Module.Products.Domain.csproj",
+      "BackendA\\Module\\Products\\NatsSyncLab.BackendA.Module.Products.Application\\NatsSyncLab.BackendA.Module.Products.Application.csproj",
+      "BackendA\\Module\\Products\\NatsSyncLab.BackendA.Module.Products.Infrastructure\\NatsSyncLab.BackendA.Module.Products.Infrastructure.csproj",
+      "BackendA\\Module\\Products\\NatsSyncLab.BackendA.Module.Products.PublicApi\\NatsSyncLab.BackendA.Module.Products.PublicApi.csproj",
+      "BackendA\\Module\\Products\\NatsSyncLab.BackendA.Module.Products.IntegrationEvent\\NatsSyncLab.BackendA.Module.Products.IntegrationEvent.csproj",
+      "BackendA\\Module\\CustomersReplica\\NatsSyncLab.BackendA.Module.CustomersReplica.Domain\\NatsSyncLab.BackendA.Module.CustomersReplica.Domain.csproj",
+      "BackendA\\Module\\CustomersReplica\\NatsSyncLab.BackendA.Module.CustomersReplica.Application\\NatsSyncLab.BackendA.Module.CustomersReplica.Application.csproj",
+      "BackendA\\Module\\CustomersReplica\\NatsSyncLab.BackendA.Module.CustomersReplica.Infrastructure\\NatsSyncLab.BackendA.Module.CustomersReplica.Infrastructure.csproj",
+      "BackendA\\Module\\CustomersReplica\\NatsSyncLab.BackendA.Module.CustomersReplica.PublicApi\\NatsSyncLab.BackendA.Module.CustomersReplica.PublicApi.csproj",
+      "BackendA\\Module\\CustomersReplica\\NatsSyncLab.BackendA.Module.CustomersReplica.IntegrationEvent\\NatsSyncLab.BackendA.Module.CustomersReplica.IntegrationEvent.csproj",
+      "tests\\NatsSyncLab.SharedKernel.UnitTests\\NatsSyncLab.SharedKernel.UnitTests.csproj"
+    ]
+  }
+}

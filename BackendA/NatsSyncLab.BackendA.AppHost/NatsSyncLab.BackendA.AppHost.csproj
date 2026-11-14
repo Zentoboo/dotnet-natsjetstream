@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <PackageReference Include="Asp.Versioning.Http" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\SharedKernel\NatsSyncLab.BackendA.SharedKernel\NatsSyncLab.BackendA.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\SharedKernel\NatsSyncLab.SharedKernel\NatsSyncLab.SharedKernel.csproj" />
+    <ProjectReference Include="..\Module\Products\NatsSyncLab.BackendA.Module.Products.Domain\NatsSyncLab.BackendA.Module.Products.Domain.csproj" />
+    <ProjectReference Include="..\Module\Products\NatsSyncLab.BackendA.Module.Products.Application\NatsSyncLab.BackendA.Module.Products.Application.csproj" />
+    <ProjectReference Include="..\Module\Products\NatsSyncLab.BackendA.Module.Products.Infrastructure\NatsSyncLab.BackendA.Module.Products.Infrastructure.csproj" />
+    <ProjectReference Include="..\Module\Products\NatsSyncLab.BackendA.Module.Products.PublicApi\NatsSyncLab.BackendA.Module.Products.PublicApi.csproj" />
+    <ProjectReference Include="..\Module\Products\NatsSyncLab.BackendA.Module.Products.IntegrationEvent\NatsSyncLab.BackendA.Module.Products.IntegrationEvent.csproj" />
+    <ProjectReference Include="..\Module\CustomersReplica\NatsSyncLab.BackendA.Module.CustomersReplica.Domain\NatsSyncLab.BackendA.Module.CustomersReplica.Domain.csproj" />
+    <ProjectReference Include="..\Module\CustomersReplica\NatsSyncLab.BackendA.Module.CustomersReplica.Application\NatsSyncLab.BackendA.Module.CustomersReplica.Application.csproj" />
+    <ProjectReference Include="..\Module\CustomersReplica\NatsSyncLab.BackendA.Module.CustomersReplica.Infrastructure\NatsSyncLab.BackendA.Module.CustomersReplica.Infrastructure.csproj" />
+    <ProjectReference Include="..\Module\CustomersReplica\NatsSyncLab.BackendA.Module.CustomersReplica.PublicApi\NatsSyncLab.BackendA.Module.CustomersReplica.PublicApi.csproj" />
+    <ProjectReference Include="..\Module\CustomersReplica\NatsSyncLab.BackendA.Module.CustomersReplica.IntegrationEvent\NatsSyncLab.BackendA.Module.CustomersReplica.IntegrationEvent.csproj" />
+  </ItemGroup>
+</Project>

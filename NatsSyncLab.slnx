@@ -1,10 +1,46 @@
 <Solution>
-  <Folder Name="/src/">
-    <Project Path="src/NatsSyncLab.BackendA/NatsSyncLab.BackendA.csproj" />
-    <Project Path="src/NatsSyncLab.BackendB/NatsSyncLab.BackendB.csproj" />
-    <Project Path="src/NatsSyncLab.BuildingBlocks/NatsSyncLab.BuildingBlocks.csproj" />
+  <Folder Name="/SharedKernel/">
+    <Project Path="SharedKernel/NatsSyncLab.SharedKernel/NatsSyncLab.SharedKernel.csproj" />
+  </Folder>
+  <Folder Name="/BackendA/">
+    <Project Path="BackendA/NatsSyncLab.BackendA.AppHost/NatsSyncLab.BackendA.AppHost.csproj" />
+    <Project Path="BackendA/SharedKernel/NatsSyncLab.BackendA.SharedKernel/NatsSyncLab.BackendA.SharedKernel.csproj" />
+  </Folder>
+  <Folder Name="/BackendA/Module/Products/">
+    <Project Path="BackendA/Module/Products/NatsSyncLab.BackendA.Module.Products.Domain/NatsSyncLab.BackendA.Module.Products.Domain.csproj" />
+    <Project Path="BackendA/Module/Products/NatsSyncLab.BackendA.Module.Products.Application/NatsSyncLab.BackendA.Module.Products.Application.csproj" />
+    <Project Path="BackendA/Module/Products/NatsSyncLab.BackendA.Module.Products.Infrastructure/NatsSyncLab.BackendA.Module.Products.Infrastructure.csproj" />
+    <Project Path="BackendA/Module/Products/NatsSyncLab.BackendA.Module.Products.PublicApi/NatsSyncLab.BackendA.Module.Products.PublicApi.csproj" />
+    <Project Path="BackendA/Module/Products/NatsSyncLab.BackendA.Module.Products.IntegrationEvent/NatsSyncLab.BackendA.Module.Products.IntegrationEvent.csproj" />
+  </Folder>
+  <Folder Name="/BackendA/Module/CustomersReplica/">
+    <Project Path="BackendA/Module/CustomersReplica/NatsSyncLab.BackendA.Module.CustomersReplica.Domain/NatsSyncLab.BackendA.Module.CustomersReplica.Domain.csproj" />
+    <Project Path="BackendA/Module/CustomersReplica/NatsSyncLab.BackendA.Module.CustomersReplica.Application/NatsSyncLab.BackendA.Module.CustomersReplica.Application.csproj" />
+    <Project Path="BackendA/Module/CustomersReplica/NatsSyncLab.BackendA.Module.CustomersReplica.Infrastructure/NatsSyncLab.BackendA.Module.CustomersReplica.Infrastructure.csproj" />
+    <Project Path="BackendA/Module/CustomersReplica/NatsSyncLab.BackendA.Module.CustomersReplica.PublicApi/NatsSyncLab.BackendA.Module.CustomersReplica.PublicApi.csproj" />
+    <Project Path="BackendA/Module/CustomersReplica/NatsSyncLab.BackendA.Module.CustomersReplica.IntegrationEvent/NatsSyncLab.BackendA.Module.CustomersReplica.IntegrationEvent.csproj" />
+  </Folder>
+  <Folder Name="/BackendB/">
+    <Project Path="BackendB/NatsSyncLab.BackendB.AppHost/NatsSyncLab.BackendB.AppHost.csproj" />
+    <Project Path="BackendB/SharedKernel/NatsSyncLab.BackendB.SharedKernel/NatsSyncLab.BackendB.SharedKernel.csproj" />
+  </Folder>
+  <Folder Name="/BackendB/Module/Customers/">
+    <Project Path="BackendB/Module/Customers/NatsSyncLab.BackendB.Module.Customers.Domain/NatsSyncLab.BackendB.Module.Customers.Domain.csproj" />
+    <Project Path="BackendB/Module/Customers/NatsSyncLab.BackendB.Module.Customers.Application/NatsSyncLab.BackendB.Module.Customers.Application.csproj" />
+    <Project Path="BackendB/Module/Customers/NatsSyncLab.BackendB.Module.Customers.Infrastructure/NatsSyncLab.BackendB.Module.Customers.Infrastructure.csproj" />
+    <Project Path="BackendB/Module/Customers/NatsSyncLab.BackendB.Module.Customers.PublicApi/NatsSyncLab.BackendB.Module.Customers.PublicApi.csproj" />
+    <Project Path="BackendB/Module/Customers/NatsSyncLab.BackendB.Module.Customers.IntegrationEvent/NatsSyncLab.BackendB.Module.Customers.IntegrationEvent.csproj" />
+  </Folder>
+  <Folder Name="/BackendB/Module/ProductsReplica/">
+    <Project Path="BackendB/Module/ProductsReplica/NatsSyncLab.BackendB.Module.ProductsReplica.Domain/NatsSyncLab.BackendB.Module.ProductsReplica.Domain.csproj" />
+    <Project Path="BackendB/Module/ProductsReplica/NatsSyncLab.BackendB.Module.ProductsReplica.Application/NatsSyncLab.BackendB.Module.ProductsReplica.Application.csproj" />
+    <Project Path="BackendB/Module/ProductsReplica/NatsSyncLab.BackendB.Module.ProductsReplica.Infrastructure/NatsSyncLab.BackendB.Module.ProductsReplica.Infrastructure.csproj" />
+    <Project Path="BackendB/Module/ProductsReplica/NatsSyncLab.BackendB.Module.ProductsReplica.PublicApi/NatsSyncLab.BackendB.Module.ProductsReplica.PublicApi.csproj" />
+    <Project Path="BackendB/Module/ProductsReplica/NatsSyncLab.BackendB.Module.ProductsReplica.IntegrationEvent/NatsSyncLab.BackendB.Module.ProductsReplica.IntegrationEvent.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/NatsSyncLab.Tests/NatsSyncLab.Tests.csproj" />
+    <Project Path="tests/NatsSyncLab.SharedKernel.UnitTests/NatsSyncLab.SharedKernel.UnitTests.csproj" />
+    <Project Path="tests/NatsSyncLab.BackendA.Module.Products.UnitTests/NatsSyncLab.BackendA.Module.Products.UnitTests.csproj" />
+    <Project Path="tests/NatsSyncLab.ArchitectureTests/NatsSyncLab.ArchitectureTests.csproj" />
   </Folder>
 </Solution>

@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\SharedKernel\NatsSyncLab.SharedKernel\NatsSyncLab.SharedKernel.csproj" />
+  </ItemGroup>
+</Project>

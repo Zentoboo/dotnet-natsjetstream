@@ -69,19 +69,19 @@ Enable central package management and pin **every** version here. Individual `.c
 
 ### Baseline package set
 
-| Area | Packages |
-| --- | --- |
-| Persistence | `Microsoft.EntityFrameworkCore`, `.Relational`, `.Design`, `Npgsql.EntityFrameworkCore.PostgreSQL`, `Dapper` |
-| CQRS (Style B) | `MediatR` |
-| Validation | `FluentValidation`, `FluentValidation.DependencyInjectionExtensions` |
-| API | `Microsoft.AspNetCore.OpenApi`, `Scalar.AspNetCore`, `Asp.Versioning.Mvc`, `Asp.Versioning.Mvc.ApiExplorer` |
-| Auth | `Microsoft.AspNetCore.Authentication.JwtBearer` |
-| Caching | `ZiggyCreatures.FusionCache`, `.Backplane.StackExchangeRedis`, `.Serialization.SystemTextJson`, `Microsoft.Extensions.Caching.StackExchangeRedis` |
-| Jobs | `TickerQ`, `TickerQ.EntityFrameworkCore`, `TickerQ.Dashboard` |
-| Logging | `Serilog`, `Serilog.Sinks.MongoDB`, `Serilog.UI`, `Serilog.UI.MongoDbProvider`, `Serilog.Sinks.Map`, `Serilog.Exceptions.EntityFrameworkCore` |
-| Telemetry | `OpenTelemetry.*`, `Npgsql.OpenTelemetry`, `Sentry.AspNetCore`, `Sentry.OpenTelemetry` |
-| Domain helpers | `Ardalis.GuardClauses`, `Ardalis.SmartEnum`, `Ardalis.SmartEnum.EFCore` |
-| HTTP clients | `Refit.HttpClientFactory` |
+| Area           | Packages                                                                                                                                          |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Persistence    | `Microsoft.EntityFrameworkCore`, `.Relational`, `.Design`, `Npgsql.EntityFrameworkCore.PostgreSQL`, `Dapper`                                      |
+| CQRS (Style B) | `MediatR`                                                                                                                                         |
+| Validation     | `FluentValidation`, `FluentValidation.DependencyInjectionExtensions`                                                                              |
+| API            | `Microsoft.AspNetCore.OpenApi`, `Scalar.AspNetCore`, `Asp.Versioning.Mvc`, `Asp.Versioning.Mvc.ApiExplorer`                                       |
+| Auth           | `Microsoft.AspNetCore.Authentication.JwtBearer`                                                                                                   |
+| Caching        | `ZiggyCreatures.FusionCache`, `.Backplane.StackExchangeRedis`, `.Serialization.SystemTextJson`, `Microsoft.Extensions.Caching.StackExchangeRedis` |
+| Jobs           | `TickerQ`, `TickerQ.EntityFrameworkCore`, `TickerQ.Dashboard`                                                                                     |
+| Logging        | `Serilog`, `Serilog.Sinks.MongoDB`, `Serilog.UI`, `Serilog.UI.MongoDbProvider`, `Serilog.Sinks.Map`, `Serilog.Exceptions.EntityFrameworkCore`     |
+| Telemetry      | `OpenTelemetry.*`, `Npgsql.OpenTelemetry`, `Sentry.AspNetCore`, `Sentry.OpenTelemetry`                                                            |
+| Domain helpers | `Ardalis.GuardClauses`, `Ardalis.SmartEnum`, `Ardalis.SmartEnum.EFCore`                                                                           |
+| HTTP clients   | `Refit.HttpClientFactory`                                                                                                                         |
 
 ### Solution filters
 
@@ -189,13 +189,13 @@ Sales/Module/Order/
 
 ### Project references (copy exactly)
 
-| Project | `<ProjectReference>` |
-| --- | --- |
-| `.Domain` | `MKA.SharedKernel` (+ `MKA.Sales.SharedKernel` if the domain needs service types) |
-| `.Application` | `.Domain` |
-| `.Infrastructure` | `.Application`, `.Domain`, `MKA.SharedKernel`, `MKA.Sales.SharedKernel` |
-| `.PublicApi` | `.Application`, `.Domain`, `.Infrastructure` |
-| `.IntegrationEvent` | `.Domain` |
+| Project             | `<ProjectReference>`                                                              |
+| ------------------- | --------------------------------------------------------------------------------- |
+| `.Domain`           | `MKA.SharedKernel` (+ `MKA.Sales.SharedKernel` if the domain needs service types) |
+| `.Application`      | `.Domain`                                                                         |
+| `.Infrastructure`   | `.Application`, `.Domain`, `MKA.SharedKernel`, `MKA.Sales.SharedKernel`           |
+| `.PublicApi`        | `.Application`, `.Domain`, `.Infrastructure`                                      |
+| `.IntegrationEvent` | `.Domain`                                                                         |
 
 **Never** add a reference to another module's `Domain`, `Application` or `Infrastructure`.
 
@@ -600,17 +600,17 @@ If a service needs data owned by another service:
 
 If you're starting fresh, adopt these instead of copying the rough edges:
 
-| Current state | Recommended |
-| --- | --- |
-| Empty `Domain`/`Application`/`PublicApi`/`IntegrationEvent` stubs | Create only the projects a module actually needs; add layers when they earn their place. |
-| `PublicApi` references `Infrastructure` | `PublicApi` should reference `Application` only; keep implementations in `Infrastructure` and register them in the AppHost. |
-| Mixed `PublicApi` / `PublicAPI` casing | Standardise on `PublicApi`. |
-| Two handler styles in one suite | One style per service (architecture-tested). |
-| `Project.*` → `User.Domain` / `User.Infrastructure` | Replace with `User.PublicApi` contracts. |
-| No tests | Add `Domain.UnitTests`, `Infrastructure.IntegrationTests` (Testcontainers Postgres), `AppHost.FunctionalTests` (WebApplicationFactory). |
-| Startup `MigrateAsync()` only | Add a deployment-time migration job, or gate migrations behind a flag for zero-downtime. |
-| `IntegrationEvent` projects with no publisher | Introduce a real outbox + broker only when a use case demands it; otherwise delete the stubs. |
-| Host `DependencyInjection` doing everything | Split into `Add<Service>Host`, `Add<Service>Cache`, `Add<Service>Jobs` for readability. |
+| Current state                                                     | Recommended                                                                                                                             |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Empty `Domain`/`Application`/`PublicApi`/`IntegrationEvent` stubs | Create only the projects a module actually needs; add layers when they earn their place.                                                |
+| `PublicApi` references `Infrastructure`                           | `PublicApi` should reference `Application` only; keep implementations in `Infrastructure` and register them in the AppHost.             |
+| Mixed `PublicApi` / `PublicAPI` casing                            | Standardise on `PublicApi`.                                                                                                             |
+| Two handler styles in one suite                                   | One style per service (architecture-tested).                                                                                            |
+| `Project.*` → `User.Domain` / `User.Infrastructure`               | Replace with `User.PublicApi` contracts.                                                                                                |
+| No tests                                                          | Add `Domain.UnitTests`, `Infrastructure.IntegrationTests` (Testcontainers Postgres), `AppHost.FunctionalTests` (WebApplicationFactory). |
+| Startup `MigrateAsync()` only                                     | Add a deployment-time migration job, or gate migrations behind a flag for zero-downtime.                                                |
+| `IntegrationEvent` projects with no publisher                     | Introduce a real outbox + broker only when a use case demands it; otherwise delete the stubs.                                           |
+| Host `DependencyInjection` doing everything                       | Split into `Add<Service>Host`, `Add<Service>Cache`, `Add<Service>Jobs` for readability.                                                 |
 
 ---
 

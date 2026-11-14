@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Dapper" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="NATS.Net" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\NatsSyncLab.BackendA.Module.Products.Domain\NatsSyncLab.BackendA.Module.Products.Domain.csproj" />
+    <ProjectReference Include="..\NatsSyncLab.BackendA.Module.Products.Application\NatsSyncLab.BackendA.Module.Products.Application.csproj" />
+    <ProjectReference Include="..\NatsSyncLab.BackendA.Module.Products.IntegrationEvent\NatsSyncLab.BackendA.Module.Products.IntegrationEvent.csproj" />
+    <ProjectReference Include="..\..\..\..\SharedKernel\NatsSyncLab.SharedKernel\NatsSyncLab.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\..\SharedKernel\NatsSyncLab.BackendA.SharedKernel\NatsSyncLab.BackendA.SharedKernel.csproj" />
+  </ItemGroup>
+</Project>

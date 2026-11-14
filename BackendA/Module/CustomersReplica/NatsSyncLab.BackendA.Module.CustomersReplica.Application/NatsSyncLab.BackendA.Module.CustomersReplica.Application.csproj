@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\NatsSyncLab.BackendA.Module.CustomersReplica.Domain\NatsSyncLab.BackendA.Module.CustomersReplica.Domain.csproj" />
+  </ItemGroup>
+</Project>
