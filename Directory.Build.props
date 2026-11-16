@@ -6,5 +6,8 @@
     <LangVersion>latest</LangVersion>
     <PlatformTarget>x64</PlatformTarget>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- Keep every intermediate path short so the solution builds even when the repo is
+         cloned into a long folder and Windows long paths are disabled (MAX_PATH). -->
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)artifacts\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
   </PropertyGroup>
 </Project>

@@ -1,9 +1,79 @@
+/* Typography loaded locally so the app matches the MKA portal without a CDN. */
+@font-face {
+  font-family: 'Poppins';
+  src: url('./assets/fonts/poppins-v24-latin-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Poppins';
+  src: url('./assets/fonts/poppins-v24-latin-600.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'DM Sans';
+  src: url('./assets/fonts/dm-sans-v17-latin-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Roboto';
+  src: url('./assets/fonts/roboto-v51-latin-regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Design tokens lifted from the MKA portal (lara-light-indigo + mkaTokens). */
 :root {
-  font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --primary-color: #2e3192;
+  --primary-color-hover: #3a3ea8;
+  --primary-color-text: #ffffff;
+
+  --text-color: #2e3192;
+  --text-color-secondary: #4a4a52;
+  --text-color-tertiary: #787880;
+
+  --surface-ground: #f9fafb;
+  --surface-card: #ffffff;
+  --surface-border: #dfe7ef;
+  --surface-hover: #f6f9fc;
+
+  --table-header-bg: #eae8f4;
+  --table-row-border: #d1d0d0;
+  --table-row-hover: #fafafd;
+
+  --accent-bg: #dbeafe;
+  --green-bg: #dcfce7;
+  --green-text: #15803d;
+  --red-bg: #fee2e2;
+  --red-text: #b91c1c;
+  --gray-bg: #f5f3f7;
+
+  --font-display: 'Poppins', 'Segoe UI', system-ui, sans-serif;
+  --font-label: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Roboto', 'Segoe UI', system-ui, sans-serif;
+
+  --radius-card: 12px;
+  --radius-control: 6px;
+  --shadow-card: 0 4px 32px rgba(46, 49, 146, 0.08);
+
+  --space-1: 8px;
+  --space-2: 16px;
+
+  font-family: var(--font-body);
+  font-size: 14px;
   line-height: 1.5;
   font-weight: 400;
-  color: #172033;
-  background: #f3f6fc;
+  color: var(--text-color-secondary);
+  background: var(--surface-ground);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -23,10 +93,53 @@ body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
-  background:
-    radial-gradient(circle at 12% -10%, rgba(80, 112, 255, 0.16), transparent 36rem),
-    radial-gradient(circle at 95% 0%, rgba(0, 184, 169, 0.12), transparent 30rem),
-    #f3f6fc;
+  background: var(--surface-ground);
+  color: var(--text-color-secondary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: var(--space-2) 0 var(--space-1);
+  color: #1a1a1f;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+h1 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 28px;
+}
+
+h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 24px;
+}
+
+p {
+  margin: 0 0 var(--space-1);
+}
+
+p:last-child {
+  margin-bottom: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
 }
 
 button,
@@ -38,6 +151,261 @@ button {
   cursor: pointer;
 }
 
-a {
-  color: inherit;
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: #c7c7cc;
+}
+
+/* Buttons */
+.primary-button {
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: var(--primary-color);
+  padding: 8px 16px;
+  color: var(--primary-color-text);
+  font-family: var(--font-label);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  transition:
+    background-color 0.18s,
+    box-shadow 0.18s;
+}
+
+.primary-button:hover:not(:disabled) {
+  background: var(--primary-color-hover);
+}
+
+.primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ghost-button,
+.danger-button {
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-control);
+  background: var(--surface-card);
+  padding: 8px 12px;
+  color: var(--primary-color);
+  font-family: var(--font-label);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  transition:
+    background-color 0.18s,
+    border-color 0.18s;
+}
+
+.ghost-button:hover {
+  border-color: #c9d3e4;
+  background: var(--surface-hover);
+}
+
+.danger-button {
+  border-color: transparent;
+  background: var(--red-bg);
+  color: var(--red-text);
+}
+
+.danger-button:hover {
+  background: #fecaca;
+}
+
+/* Form controls */
+input {
+  width: 100%;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-control);
+  background: var(--surface-card);
+  padding: 10px 12px;
+  color: #1a1a1f;
+  font-family: var(--font-body);
+  font-size: 14px;
+  outline: none;
+  transition:
+    border-color 0.18s,
+    box-shadow 0.18s;
+}
+
+input::placeholder {
+  color: var(--text-color-tertiary);
+}
+
+input:hover {
+  border-color: #c9d3e4;
+}
+
+input:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(46, 49, 146, 0.12);
+}
+
+/* Data table (mirrors the MKA asset-breakdown-table styling) */
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-card);
+  background: var(--surface-card);
+}
+
+table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+}
+
+th {
+  border: 0;
+  background: var(--table-header-bg);
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-color-secondary);
+  font-family: var(--font-label);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-align: left;
+}
+
+td {
+  border: 0;
+  border-bottom: 1px solid var(--table-row-border);
+  padding: var(--space-1) var(--space-2);
+  color: #1a1a1f;
+  font-family: var(--font-label);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  vertical-align: middle;
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+tbody tr:hover td {
+  background: var(--table-row-hover);
+}
+
+td strong {
+  display: block;
+  color: #1a1a1f;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.muted {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-color-tertiary);
+}
+
+.version-badge {
+  display: inline-flex;
+  border-radius: var(--radius-control);
+  background: var(--accent-bg);
+  padding: 2px 8px;
+  color: var(--primary-color);
+  font-family: var(--font-label);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--radius-control);
+  padding: 2px 8px;
+  font-family: var(--font-label);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.status::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  content: '';
+}
+
+.status.active {
+  background: var(--green-bg);
+  color: var(--green-text);
+}
+
+.status.deleted {
+  background: var(--gray-bg);
+  color: var(--text-color-secondary);
+}
+
+.is-deleted td {
+  opacity: 0.6;
+}
+
+.row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.empty-state {
+  margin: 0;
+  padding: 32px 16px;
+  color: var(--text-color-tertiary);
+  font-family: var(--font-body);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Feedback */
+.alert {
+  margin-bottom: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  padding: var(--space-1) 12px;
+  font-family: var(--font-label);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.alert-error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: var(--red-text);
+}
+
+.alert-success {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: var(--green-text);
+}
+
+.hint {
+  margin: var(--space-2) 0 0;
+  color: var(--text-color-tertiary);
+  font-family: var(--font-body);
+  font-size: 12px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
