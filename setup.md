@@ -1,4 +1,4 @@
-# NATS JetStream Sync Lab — Setup
+# NATS JetStream Sync Lab - Setup
 
 How to run the lab, inspect its state, and troubleshoot it. For how replication works and the example test scenarios, see [README.md](./README.md).
 

@@ -1,6 +1,6 @@
 # Reference
 
-API details and a map of the files that implement the product sync flow. For how it works and the example test scenarios, see [../README.md](../README.md). For setup and inspection commands, see [../setup.md](../setup.md).
+API details and a map of the files that implement the product sync flow. For how it works and the example test scenarios, see [README.md](./README.md). For setup and inspection commands, see [setup.md](./setup.md).
 
 ## API reference
 
