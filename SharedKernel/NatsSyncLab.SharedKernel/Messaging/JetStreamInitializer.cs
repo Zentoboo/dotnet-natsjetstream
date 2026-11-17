@@ -18,6 +18,13 @@ public sealed class JetStreamInitializer(
 
         await EnsureStreamAsync(nats.StreamA, Subjects.SourceA, nats, cancellationToken);
         await EnsureStreamAsync(nats.StreamB, Subjects.SourceB, nats, cancellationToken);
+        await EnsureStreamAsync(
+            nats.StreamDeadLetter,
+            $"{nats.DeadLetterSubjectPrefix}.>",
+            nats,
+            cancellationToken,
+            maxAge: nats.DeadLetterMaxAge,
+            maxBytes: nats.DeadLetterMaxBytes);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
@@ -26,17 +33,24 @@ public sealed class JetStreamInitializer(
         string streamName,
         string subject,
         NatsOptions natsOptions,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TimeSpan? maxAge = null,
+        long? maxBytes = null)
     {
-        await jetStream.CreateOrUpdateStreamAsync(
-            new StreamConfig(streamName, [subject])
-            {
-                Storage = StreamConfigStorage.File,
-                Retention = StreamConfigRetention.Limits,
-                MaxAge = natsOptions.MaxAge,
-                DuplicateWindow = natsOptions.DuplicateWindow,
-            },
-            cancellationToken);
+        var config = new StreamConfig(streamName, [subject])
+        {
+            Storage = StreamConfigStorage.File,
+            Retention = StreamConfigRetention.Limits,
+            MaxAge = maxAge ?? natsOptions.MaxAge,
+            DuplicateWindow = natsOptions.DuplicateWindow,
+        };
+
+        if (maxBytes is not null)
+        {
+            config.MaxBytes = maxBytes.Value;
+        }
+
+        await jetStream.CreateOrUpdateStreamAsync(config, cancellationToken);
 
         logger.LogInformation(
             "JetStream stream {StreamName} ready for subject {Subject}",

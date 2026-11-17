@@ -43,7 +43,9 @@ Backend B's replica responses also include `syncedAt`, the time B applied the ev
 | Backend B EF migration runner | `BackendB/NatsSyncLab.BackendB.AppHost/DatabaseMigrator.cs` |
 | NATS client registration, reconnect configuration source, stream initializer registration | `SharedKernel/NatsSyncLab.SharedKernel/Messaging/NatsServiceCollectionExtensions.cs` |
 | Stream creation and stream retention settings | `SharedKernel/NatsSyncLab.SharedKernel/Messaging/JetStreamInitializer.cs` |
-| NATS URL, stream names, retention, duplicate window | `SharedKernel/NatsSyncLab.SharedKernel/Messaging/NatsOptions.cs` |
+| NATS URL, stream names, retention, duplicate window, dead-letter limits | `SharedKernel/NatsSyncLab.SharedKernel/Messaging/NatsOptions.cs` |
+| Metrics meter, counters, histograms, and gauges | `SharedKernel/NatsSyncLab.SharedKernel/Diagnostics/SyncMetrics.cs` |
+| Environment-gated chaos kill points | `SharedKernel/NatsSyncLab.SharedKernel/Chaos/Chaos.cs` |
 | NATS container, ports, and persistent volume | `docker-compose.yml` |
 | NATS server JetStream storage and monitoring | `infra/nats/nats-server.conf` |
 
@@ -58,6 +60,8 @@ Backend B's replica responses also include `syncedAt`, the time B applied the ev
 | Build outbox record from product event | `BackendA/Module/Products/NatsSyncLab.BackendA.Module.Products.Infrastructure/Messaging/ProductOutbox.cs` |
 | Build envelope, subject, payload | `BackendA/Module/Products/NatsSyncLab.BackendA.Module.Products.IntegrationEvent/Products/ProductIntegrationEvents.cs` |
 | Poll outbox and publish to NATS | `BackendA/Module/Products/NatsSyncLab.BackendA.Module.Products.Infrastructure/Messaging/OutboxRelayService.cs` |
+| Delete old published outbox rows at startup | `BackendA/Module/Products/NatsSyncLab.BackendA.Module.Products.Infrastructure/Messaging/OutboxCleanupService.cs` |
+| Outbox retention settings | `BackendA/Module/Products/NatsSyncLab.BackendA.Module.Products.Infrastructure/Persistence/OutboxRetentionOptions.cs` |
 | Outbox entity | `SharedKernel/NatsSyncLab.SharedKernel/Persistence/OutboxMessage.cs` |
 | Outbox table mapping | `BackendA/Module/Products/NatsSyncLab.BackendA.Module.Products.Infrastructure/Persistence/Configuration/OutboxMessageConfiguration.cs` |
 | Product table mapping | `BackendA/Module/Products/NatsSyncLab.BackendA.Module.Products.Infrastructure/Persistence/Configuration/ProductConfiguration.cs` |
@@ -69,6 +73,7 @@ Backend B's replica responses also include `syncedAt`, the time B applied the ev
 | Responsibility | File |
 | --- | --- |
 | Event envelope and JSON helpers | `SharedKernel/NatsSyncLab.SharedKernel/Contracts/EventEnvelope.cs` |
+| Dead-letter envelope and JSON helpers | `SharedKernel/NatsSyncLab.SharedKernel/Contracts/DeadLetterEnvelope.cs` |
 | Product event payload | `SharedKernel/NatsSyncLab.SharedKernel/IntegrationEvents/ProductSyncPayload.cs` |
 | Subjects | `SharedKernel/NatsSyncLab.SharedKernel/Contracts/Subjects.cs` |
 | Entity types | `SharedKernel/NatsSyncLab.SharedKernel/Contracts/EntityTypes.cs` |
@@ -80,7 +85,10 @@ Backend B's replica responses also include `syncedAt`, the time B applied the ev
 
 | Responsibility | File |
 | --- | --- |
-| Fetch, deduplicate, upsert, acknowledge | `BackendB/Module/ProductsReplica/NatsSyncLab.BackendB.Module.ProductsReplica.Infrastructure/Messaging/ProductsConsumerService.cs` |
+| Fetch, validate, deduplicate, upsert, dead-letter, acknowledge | `BackendB/Module/ProductsReplica/NatsSyncLab.BackendB.Module.ProductsReplica.Infrastructure/Messaging/ProductsConsumerService.cs` |
+| Permanent event failure classification | `BackendB/Module/ProductsReplica/NatsSyncLab.BackendB.Module.ProductsReplica.Infrastructure/Messaging/PermanentEventException.cs` |
+| Delete old inbox rows at startup | `BackendB/Module/ProductsReplica/NatsSyncLab.BackendB.Module.ProductsReplica.Infrastructure/Messaging/InboxCleanupService.cs` |
+| Inbox retention settings | `BackendB/Module/ProductsReplica/NatsSyncLab.BackendB.Module.ProductsReplica.Infrastructure/Persistence/InboxRetentionOptions.cs` |
 | Replica entity | `BackendB/Module/ProductsReplica/NatsSyncLab.BackendB.Module.ProductsReplica.Domain/Products/ProductReplica.cs` |
 | Replica database context | `BackendB/Module/ProductsReplica/NatsSyncLab.BackendB.Module.ProductsReplica.Infrastructure/Persistence/ProductsReplicaDbContext.cs` |
 | Replica table mapping | `BackendB/Module/ProductsReplica/NatsSyncLab.BackendB.Module.ProductsReplica.Infrastructure/Persistence/Configuration/ProductReplicaConfiguration.cs` |
@@ -103,6 +111,7 @@ Backend B's replica responses also include `syncedAt`, the time B applied the ev
 | --- | --- |
 | Product domain behavior | `tests/NatsSyncLab.BackendA.Module.Products.UnitTests/ProductTests.cs` |
 | Event envelope validation | `tests/NatsSyncLab.SharedKernel.UnitTests/EventEnvelopeTests.cs` |
+| Dead-letter envelope serialization | `tests/NatsSyncLab.SharedKernel.UnitTests/DeadLetterEnvelopeTests.cs` |
 | Subject construction | `tests/NatsSyncLab.SharedKernel.UnitTests/SubjectsTests.cs` |
 | Chaos/edge behavior | `tests/NatsSyncLab.SharedKernel.UnitTests/ChaosTests.cs` |
 | Architecture rules | `tests/NatsSyncLab.ArchitectureTests` |

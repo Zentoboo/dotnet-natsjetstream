@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -5,12 +6,15 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NATS.Client.JetStream;
 using NatsSyncLab.BackendA.Module.Products.Infrastructure.Persistence;
+using NatsSyncLab.SharedKernel.Chaos;
+using NatsSyncLab.SharedKernel.Diagnostics;
 
 namespace NatsSyncLab.BackendA.Module.Products.Infrastructure.Messaging;
 
 internal sealed class OutboxRelayService(
     IServiceScopeFactory scopeFactory,
     INatsJSContext jetStream,
+    SyncMetrics metrics,
     ILogger<OutboxRelayService> logger) : BackgroundService
 {
     private const int BatchSize = 50;
@@ -21,9 +25,12 @@ internal sealed class OutboxRelayService(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
+            var started = Stopwatch.GetTimestamp();
+
             try
             {
                 var publishedCount = await PublishBatchAsync(stoppingToken);
+                metrics.OutboxBatchDurationMs.Record(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
 
                 if (publishedCount == 0)
                 {
@@ -36,6 +43,8 @@ internal sealed class OutboxRelayService(
             }
             catch (Exception exception)
             {
+                metrics.OutboxPublishFailures.Add(1);
+                metrics.OutboxBatchDurationMs.Record(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
                 logger.LogError(exception, "Outbox relay failed; retrying shortly.");
                 await Task.Delay(FailureDelay, stoppingToken);
             }
@@ -59,6 +68,11 @@ internal sealed class OutboxRelayService(
                 .FromSqlInterpolated(
                     $"SELECT * FROM products.outbox WHERE published_at IS NULL ORDER BY id LIMIT {BatchSize} FOR UPDATE SKIP LOCKED")
                 .ToListAsync(cancellationToken);
+
+            var backlog = await context.Outbox.CountAsync(
+                message => message.PublishedAt == null,
+                cancellationToken);
+            metrics.SetOutboxBacklog(backlog);
 
             if (messages.Count == 0)
             {
@@ -85,9 +99,15 @@ internal sealed class OutboxRelayService(
                 message.MarkPublished(publishedAt);
             }
 
+            Chaos.KillPoint("relay-after-publish-before-save");
+
             await context.SaveChangesAsync(cancellationToken);
+
+            Chaos.KillPoint("relay-after-save-before-commit");
+
             await transaction.CommitAsync(cancellationToken);
 
+            metrics.OutboxPublished.Add(messages.Count);
             logger.LogInformation("Published {Count} outbox event(s).", messages.Count);
             return messages.Count;
         });

@@ -68,7 +68,7 @@ dotnet run --project BackendA/NatsSyncLab.BackendA.AppHost --launch-profile http
 dotnet run --project BackendB/NatsSyncLab.BackendB.AppHost --launch-profile http
 ```
 
-Both backends apply their EF Core migrations at startup and ensure the JetStream streams exist. The streams are `A_EVENTS` and `B_EVENTS`.
+Both backends apply their EF Core migrations at startup and ensure the JetStream streams exist. The streams are `A_EVENTS`, `B_EVENTS`, and `B_DEAD_LETTER`.
 
 ### 4. Start the Backend A UI
 
@@ -144,9 +144,10 @@ Natscope runs inside Docker, so it reaches NATS through the Compose service name
 
 In Natscope, check:
 
-- Streams: `A_EVENTS`, `B_EVENTS`
+- Streams: `A_EVENTS`, `B_EVENTS`, `B_DEAD_LETTER`
 - Consumer: `b-products-replica` on `A_EVENTS`
 - Consumer state: delivered, acknowledged, pending, and redelivery counts
+- Dead letters: failed product events on `B_DEAD_LETTER`
 
 ### NATS CLI
 
@@ -155,9 +156,11 @@ The `nats-cli` service uses the `nats-box` image and is started with the `tools`
 ```powershell
 docker compose --profile tools run --rm nats-cli stream ls
 docker compose --profile tools run --rm nats-cli stream info A_EVENTS
+docker compose --profile tools run --rm nats-cli stream info B_DEAD_LETTER
 docker compose --profile tools run --rm nats-cli consumer ls A_EVENTS
 docker compose --profile tools run --rm nats-cli consumer info A_EVENTS b-products-replica
 docker compose --profile tools run --rm nats-cli stream view A_EVENTS --last 5
+docker compose --profile tools run --rm nats-cli stream view B_DEAD_LETTER --last 10
 ```
 
 Useful things to verify:
@@ -166,6 +169,8 @@ Useful things to verify:
 - The subject is `a.events.product.upserted` or `a.events.product.deleted`.
 - The consumer `b-products-replica` acknowledges messages after B commits.
 - Pending messages drop as Backend B catches up.
+- Invalid events and exhausted retries appear on `b.deadletter.product.failed` in `B_DEAD_LETTER`.
+- The dead-letter payload includes the failure reason, delivery count, original stream sequence, raw payload, and exception details.
 
 ### NATS monitoring
 
@@ -194,6 +199,31 @@ docker compose exec postgres-b psql -U app -d backend_b -c "SELECT event_id, str
 ```
 
 The inbox table is the idempotency record. A duplicate event ID is ignored because the inbox primary key conflicts.
+
+Each backend also runs cleanup once at startup:
+
+- Backend A deletes published outbox rows older than 7 days.
+- Backend B deletes inbox rows older than 8 days.
+- Unpublished outbox rows are never deleted.
+
+Cleanup is startup-only for this lab. Restart the backend to trigger it; production should use a timed job or periodic hosted service. Retention is configured under `Outbox` in Backend A's `appsettings.json` and `Inbox` in Backend B's `appsettings.json`.
+
+## Inspect metrics
+
+Both backends emit a meter named `NatsSyncLab`.
+
+```powershell
+dotnet-counters ps
+dotnet-counters monitor --process-id <pid> NatsSyncLab
+```
+
+Key instruments:
+
+- `outbox.published`, `outbox.publish_failures`, `outbox.cleanup_deleted`, `outbox.backlog`
+- `consumer.processed`, `consumer.duplicates`, `consumer.stale_versions`, `consumer.nak`, `consumer.dead_lettered`, `consumer.terminated`, `consumer.errors`
+- `consumer.processing.duration_ms`, `outbox.batch.duration_ms`, `consumer.last_delivery_count`, `inbox.lag_seconds`
+
+No exporter is configured. The meter is visible only from inside the running process unless an OpenTelemetry or Prometheus exporter is added.
 
 ## Logs and shutdown
 
@@ -265,7 +295,7 @@ Stop the process using the port or change the relevant launch profile or Vite co
 
 ### Streams are missing
 
-Start Backend A and Backend B. Both hosts ensure the JetStream streams at startup. If NATS data was deleted, restart the backends after NATS is healthy.
+Start Backend A and Backend B. Both hosts ensure the JetStream streams, including `B_DEAD_LETTER`, at startup. If NATS data was deleted, restart the backends after NATS is healthy.
 
 ### Database migrations fail at startup
 

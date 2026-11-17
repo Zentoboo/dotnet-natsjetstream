@@ -21,7 +21,18 @@ public static class DependencyInjection
             DbConsts.MigrationHistoryTable,
             DbConsts.Schema);
 
+        services.AddOptions<OutboxRetentionOptions>()
+            .Bind(configuration.GetSection(OutboxRetentionOptions.SectionName))
+            .Validate(
+                options => options.RetentionDays > 0,
+                "Outbox retention days must be greater than zero.")
+            .Validate(
+                options => options.BatchSize > 0,
+                "Outbox cleanup batch size must be greater than zero.")
+            .ValidateOnStart();
+
         services.AddHostedService<OutboxRelayService>();
+        services.AddHostedService<OutboxCleanupService>();
         services.AddEndpoints(AssemblyReference.Assembly);
 
         return services;

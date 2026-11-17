@@ -95,13 +95,14 @@ The streams are configured in `SharedKernel/NatsSyncLab.SharedKernel/Messaging/J
 | --- | --- | --- |
 | `A_EVENTS` | `a.events.>` | Yes |
 | `B_EVENTS` | `b.events.>` | No, not used by the current product flow |
+| `B_DEAD_LETTER` | `b.deadletter.>` | Yes, for failed product events |
 
-The B consumer filters on `a.events.product.>` (`BackendB/Module/ProductsReplica/NatsSyncLab.BackendB.Module.ProductsReplica.Infrastructure/Messaging/ProductsConsumerService.cs:24`).
+The B consumer filters on `a.events.product.>` (`BackendB/Module/ProductsReplica/NatsSyncLab.BackendB.Module.ProductsReplica.Infrastructure/Messaging/ProductsConsumerService.cs:28`).
 
 ## Startup order
 
 1. Start PostgreSQL and NATS.
-2. Each AppHost runs its EF Core migrations, then `JetStreamInitializer` ensures both streams exist.
+2. Each AppHost runs its EF Core migrations, then `JetStreamInitializer` ensures the streams exist.
 3. A starts `OutboxRelayService`, B starts `ProductsConsumerService`, and both begin listening on HTTP.
 
 Start NATS before the backends. If NATS is unavailable during startup, the stream initializer can fail or stall. Once running, each NATS client reconnects after a later outage.
@@ -162,13 +163,13 @@ The outbox record stores the event ID, subject, JSON payload, creation time, and
 
 Key behavior:
 
-- Poll interval: **500 ms** (`:17`).
-- Failure delay: **2 seconds** (`:18`).
-- Batch size: **50** (`:16`).
-- Reads unpublished rows with `FOR UPDATE SKIP LOCKED` (`:58-60`).
-- Publishes each payload with `MsgId = EventId` (`:73-77`).
-- Marks the row published only after the publish attempt returns (`:85`).
-- Saves the published timestamps and commits (`:88-89`).
+- Poll interval: **500 ms** (`:21`).
+- Failure delay: **2 seconds** (`:22`).
+- Batch size: **50** (`:20`).
+- Reads unpublished rows with `FOR UPDATE SKIP LOCKED` (`:68-69`).
+- Publishes each payload with `MsgId = EventId` (`:87-91`).
+- Marks the row published only after the publish attempt returns (`:99`).
+- Saves the published timestamps and commits (`:104-108`).
 
 The relay is the bridge between the two durability boundaries. If NATS is unavailable, the outbox row remains unpublished. If the process crashes after publishing but before committing the published timestamp, the same event can be published again; NATS message ID de-duplication and the B inbox are the safety nets.
 
@@ -187,7 +188,9 @@ Stream configuration comes from `JetStreamInitializer`:
 
 - Storage: `File`.
 - Retention: `Limits`.
-- Max age: **7 days** (`NatsOptions.MaxAge`).
+- Max age: **7 days** for `A_EVENTS` and `B_EVENTS` (`NatsOptions.MaxAge`).
+- Max age: **30 days** for `B_DEAD_LETTER` (`NatsOptions.DeadLetterMaxAge`).
+- Max size: **20 MB** for `B_DEAD_LETTER` (`NatsOptions.DeadLetterMaxBytes`).
 - Duplicate window: **10 minutes** (`NatsOptions.DuplicateWindow`).
 
 The B consumer is configured in `ProductsConsumerService`:
@@ -200,6 +203,8 @@ The B consumer is configured in `ProductsConsumerService`:
 - Filter subject: `a.events.product.>`.
 - Fetch size: **10 messages**.
 - Fetch expiry: **5 seconds**.
+- Permanent failures: dead-lettered and terminated immediately.
+- Transient failures: retried after **1s**, **5s**, then **15s**, then dead-lettered on the **4th** delivery so the final delivery remains available if the dead-letter publish fails. A failed dead-letter publish is retried after **30s**.
 
 This is a durable pull consumer. When B is offline, NATS keeps the messages and the consumer position. When B returns, the consumer continues from its stored position.
 
@@ -217,11 +222,27 @@ The service continuously:
 4. Acknowledges after the database commit.
 5. Repeats.
 
-If the fetch or NATS connection fails, the outer loop waits **2 seconds** and retries (`:25`, `:37-43`).
+If the fetch or NATS connection fails, the outer loop waits **2 seconds** and retries (`:59`).
 
 ### Envelope validation
 
-B deserializes the event envelope and validates it. Invalid envelopes and unsupported entity types are terminated rather than retried forever. The product event must have matching entity ID and version between envelope and payload.
+B deserializes the event envelope and validates it. These failures are permanent and are dead-lettered rather than retried:
+
+- invalid envelope;
+- unsupported entity type;
+- subject that does not match the event operation;
+- missing or invalid product payload;
+- payload entity ID or version that does not match the envelope;
+- delete event whose payload is not marked deleted;
+- upsert event whose payload is marked deleted.
+
+Database errors and unknown exceptions remain transient and are retried.
+
+### Dead-letter handling
+
+A permanent failure, or a transient failure that reaches the retry limit, is published to `b.deadletter.product.failed` in the `B_DEAD_LETTER` stream. B terminates the original message only after the dead-letter publish succeeds.
+
+The dead letter contains the original subject, stream and sequence, failure reason, delivery count, failure time, raw payload, and exception details. The DLQ message ID is the original stream plus sequence, so redelivery does not create duplicate dead letters within the duplicate window.
 
 ### Database transaction
 
@@ -257,6 +278,19 @@ The B tables are mapped in:
 - `BackendB/.../Persistence/Configuration/ProductReplicaConfiguration.cs`
 - `BackendB/.../Persistence/Configuration/InboxMessageConfiguration.cs`
 
+### Table retention
+
+Both backends run a one-shot cleanup when the process starts:
+
+- A deletes published outbox rows older than **7 days**.
+- B deletes inbox rows older than **8 days**.
+- Unpublished outbox rows are never deleted.
+- Deletes are batched at **5,000 rows** per statement.
+
+Inbox retention stays above the 7-day stream `MaxAge`, so dedupe records outlive any possible redelivery.
+
+This is a lab simplification: cleanup runs only at startup. In production, use a periodic hosted service, TickerQ, Quartz, or an external scheduler.
+
 ### Read API and UI
 
 B's read endpoints use Dapper:
@@ -281,21 +315,57 @@ This system is at-least-once, not exactly-once delivery.
 
 The result is exactly-once **side effects** under at-least-once delivery.
 
+## Metrics
+
+Both backends publish a `System.Diagnostics.Metrics` meter named `NatsSyncLab`. No exporter is configured; inspect it in-process:
+
+```powershell
+dotnet-counters monitor --process-id <pid> NatsSyncLab
+```
+
+Counters cover outbox publishes/failures/cleanup and consumer processed, duplicate, stale-version, NAK, dead-letter, terminate, and error events. `outbox.backlog` is sampled by the relay, `inbox.lag_seconds` is the event age when processed, and `consumer.last_delivery_count` updates on every delivery. Processing and outbox batch durations are histograms in milliseconds.
+
+For dashboards, add an OpenTelemetry or Prometheus exporter later.
+
+## Chaos kill points
+
+`SharedKernel/.../Chaos/Chaos.cs` throws when `CHAOS_KILLPOINT` matches a named point. Set it before starting the backend:
+
+```powershell
+$env:CHAOS_KILLPOINT = "consumer-after-commit-before-ack"
+dotnet run --project BackendB/NatsSyncLab.BackendB.AppHost
+```
+
+| Kill point | Location | Effect |
+| --- | --- | --- |
+| `relay-after-publish-before-save` | After NATS publish, before outbox save | Publish succeeds, transaction rolls back, row stays unpublished and is republished |
+| `relay-after-save-before-commit` | After outbox save, before commit | Published timestamps roll back, row stays unpublished and is republished |
+| `consumer-after-inbox-insert` | After inbox insert, before replica upsert | Transaction rolls back and the redelivery is processed again |
+| `consumer-after-replica-upsert` | After replica upsert, before commit | Transaction rolls back and the redelivery is processed again |
+| `consumer-after-commit-before-ack` | After commit, before ack | Inbox and replica are committed; redelivery is suppressed by the inbox |
+
+The exception is caught by the service loop, so the process stays up and the message or outbox row is retried. Clear the variable before restarting to let the system recover:
+
+```powershell
+Remove-Item Env:CHAOS_KILLPOINT
+```
+
 ## Why recovery looks almost instant
 
 The visible recovery time is a combination of several small intervals, not one long polling cycle.
 
 | Mechanism | Interval/behavior | File |
 | --- | --- | --- |
-| A outbox poll | 500 ms | `OutboxRelayService.cs:17` |
-| A outbox failure retry | 2 seconds | `OutboxRelayService.cs:18` |
-| B consumer failure retry | 2 seconds | `ProductsConsumerService.cs:25` |
-| B fetch expiry | 5 seconds | `ProductsConsumerService.cs:70` |
+| A outbox poll | 500 ms | `OutboxRelayService.cs:21` |
+| A outbox failure retry | 2 seconds | `OutboxRelayService.cs:22` |
+| B consumer failure retry | 2 seconds | `ProductsConsumerService.cs:32` |
+| B fetch expiry | 5 seconds | `ProductsConsumerService.cs:86` |
 | B UI auto-refresh | 3 seconds | `frontend/backend-b/src/App.tsx:91-101` |
 | NATS reconnect wait | 2 seconds minimum, 5 seconds maximum backoff, unlimited retries | NATS.Net defaults |
-| NATS ack wait | 30 seconds | `ProductsConsumerService.cs:53` |
-| Max deliveries | 5 | `ProductsConsumerService.cs:54` |
-| Stream message retention | 7 days | `NatsOptions.cs` |
+| NATS ack wait | 30 seconds | `ProductsConsumerService.cs:69` |
+| Max deliveries | 5 | `ProductsConsumerService.cs:70` |
+| Event stream retention | 7 days | `NatsOptions.cs` |
+| Dead-letter retention | 30 days / 20 MB | `NatsOptions.cs` |
 
 Two details matter for the "instant" effect:
 
@@ -454,13 +524,15 @@ This scenario proves the two durability boundaries cover each other:
 
 Stopping only the B application is safe: no messages are being delivered, so they remain pending in NATS.
 
-Stopping B's PostgreSQL while the consumer is running is different. B will fail to apply a message, NAK it, and retry after 2 seconds. After `MaxDeliver = 5`, the message can be dropped from the consumer. The current lab has no dead-letter queue or automatic replay for that case.
+Stopping B's PostgreSQL while the consumer is running is different. B fails to apply the message, NAKs it, and retries after 1 second, then 5 seconds, then 15 seconds. On the 4th failed delivery, B publishes the event to `B_DEAD_LETTER` and terminates the original message. If the dead-letter publish itself fails, the NAK delay is 30 seconds and the 5th delivery retries the dead-letter publish. There is no automatic replay from the dead-letter stream.
 
 ## Failure boundaries and limitations
 
 - **NATS volume deletion:** removing `nats-data` destroys stored stream messages and consumer state. Already-published outbox rows are marked published, so A will not automatically replay them.
 - **Stream retention:** messages expire after 7 days by default. B must catch up within that window or the event is gone from the stream.
-- **Max deliveries:** if B is running but cannot apply a message, it can be dropped after 5 attempts. There is no dead-letter queue.
+- **Max deliveries:** if B is running but cannot apply a message, it is dead-lettered to `B_DEAD_LETTER` after 4 failed attempts. Replaying dead letters is manual.
+- **Dead-letter retention:** `B_DEAD_LETTER` is capped at 30 days and 20 MB. Old failures are removed by retention.
+- **Startup-only cleanup:** old outbox and inbox rows are purged only when a backend restarts. A long-running process accumulates rows until the next restart.
 - **In-flight redelivery:** if B crashes after fetch but before ack, redelivery can wait for `AckWait = 30 seconds`.
 - **B database loss:** there is no snapshot/rebuild command in this lab. Resetting B's consumer would be required to replay retained stream messages.
 - **Single NATS node:** the lab has one NATS server and one file store, not a clustered production deployment.

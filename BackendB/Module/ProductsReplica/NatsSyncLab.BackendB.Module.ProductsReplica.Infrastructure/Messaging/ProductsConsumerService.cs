@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,7 +9,9 @@ using Microsoft.Extensions.Options;
 using NATS.Client.JetStream;
 using NATS.Client.JetStream.Models;
 using NatsSyncLab.BackendB.Module.ProductsReplica.Infrastructure.Persistence;
+using NatsSyncLab.SharedKernel.Chaos;
 using NatsSyncLab.SharedKernel.Contracts;
+using NatsSyncLab.SharedKernel.Diagnostics;
 using NatsSyncLab.SharedKernel.IntegrationEvents;
 using NatsSyncLab.SharedKernel.Messaging;
 
@@ -18,11 +22,22 @@ internal sealed class ProductsConsumerService(
     INatsJSContext jetStream,
     IOptions<NatsOptions> natsOptions,
     TimeProvider timeProvider,
+    SyncMetrics metrics,
     ILogger<ProductsConsumerService> logger) : BackgroundService
 {
     private const string ConsumerName = "b-products-replica";
     private const string ProductSubject = "a.events.product.>";
-    private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
+    private const long MaxDeliveryAttempts = 5;
+    private const long DeadLetterDeliveryAttempt = MaxDeliveryAttempts - 1;
+    private static readonly TimeSpan FailureDelay = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan MessageErrorDelay = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan[] RetryDelays =
+    [
+        TimeSpan.FromSeconds(1),
+        TimeSpan.FromSeconds(5),
+        TimeSpan.FromSeconds(15),
+        TimeSpan.FromSeconds(30),
+    ];
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -39,8 +54,9 @@ internal sealed class ProductsConsumerService(
             }
             catch (Exception exception)
             {
+                metrics.ConsumerErrors.Add(1);
                 logger.LogError(exception, "Products replica consumer failed; retrying shortly.");
-                await Task.Delay(RetryDelay, stoppingToken);
+                await Task.Delay(FailureDelay, stoppingToken);
             }
         }
     }
@@ -51,7 +67,7 @@ internal sealed class ProductsConsumerService(
         {
             AckPolicy = ConsumerConfigAckPolicy.Explicit,
             AckWait = TimeSpan.FromSeconds(30),
-            MaxDeliver = 5,
+            MaxDeliver = MaxDeliveryAttempts,
             DeliverPolicy = ConsumerConfigDeliverPolicy.All,
             FilterSubject = ProductSubject,
         };
@@ -72,31 +88,71 @@ internal sealed class ProductsConsumerService(
 
         await foreach (var message in consumer.FetchAsync<byte[]>(fetchOptions, cancellationToken: cancellationToken))
         {
+            if (message.Metadata is { } metadata)
+            {
+                metrics.SetLastDeliveryCount((long)metadata.NumDelivered);
+            }
+
             if (message.Error is not null)
             {
+                metrics.ConsumerErrors.Add(1);
                 logger.LogWarning(message.Error, "Received NATS message with an error.");
-                await message.NakAsync(new AckOpts { NakDelay = RetryDelay }, cancellationToken);
+                await NakAsync(message, MessageErrorDelay, cancellationToken);
                 continue;
             }
 
+            var started = Stopwatch.GetTimestamp();
+
             try
             {
-                if (!await HandleAsync(message, cancellationToken))
-                {
-                    continue;
-                }
+                var outcome = await HandleAsync(message, cancellationToken);
+
+                Chaos.KillPoint("consumer-after-commit-before-ack");
 
                 await message.AckAsync(cancellationToken: cancellationToken);
+
+                if (outcome == HandleOutcome.Duplicate)
+                {
+                    metrics.ConsumerDuplicates.Add(1);
+                }
+                else
+                {
+                    metrics.ConsumerProcessed.Add(1);
+
+                    if (outcome == HandleOutcome.Stale)
+                    {
+                        metrics.ConsumerStaleVersions.Add(1);
+                    }
+                }
+            }
+            catch (PermanentEventException exception)
+            {
+                metrics.ConsumerErrors.Add(1);
+                await DeadLetterOrRetryAsync(message, exception.Reason, exception, cancellationToken);
             }
             catch (Exception exception)
             {
+                metrics.ConsumerErrors.Add(1);
+                var deliveryCount = GetDeliveryCount(message);
+
+                if (deliveryCount >= DeadLetterDeliveryAttempt)
+                {
+                    await DeadLetterOrRetryAsync(message, "max-deliveries", exception, cancellationToken);
+                    continue;
+                }
+
                 logger.LogError(exception, "Failed to apply product event; message will be retried.");
-                await message.NakAsync(new AckOpts { NakDelay = RetryDelay }, cancellationToken);
+                await NakAsync(message, GetRetryDelay(message), cancellationToken);
+            }
+            finally
+            {
+                metrics.ConsumerProcessingDurationMs.Record(
+                    Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             }
         }
     }
 
-    private async Task<bool> HandleAsync(INatsJSMsg<byte[]> message, CancellationToken cancellationToken)
+    private async Task<HandleOutcome> HandleAsync(INatsJSMsg<byte[]> message, CancellationToken cancellationToken)
     {
         EventEnvelope envelope;
 
@@ -107,65 +163,115 @@ internal sealed class ProductsConsumerService(
         }
         catch (Exception exception)
         {
-            logger.LogWarning(exception, "Discarding invalid event envelope.");
-            await message.AckTerminateAsync(
-                new AckOpts { TerminateReason = "invalid-envelope" },
-                cancellationToken);
-            return false;
+            throw new PermanentEventException(
+                "invalid-envelope",
+                "Event envelope is invalid.",
+                exception);
         }
 
         if (envelope.EntityType != EntityTypes.Product)
         {
-            logger.LogWarning(
-                "Discarding unsupported entity type {EntityType} from {Subject}.",
-                envelope.EntityType,
-                message.Subject);
-            await message.AckTerminateAsync(
-                new AckOpts { TerminateReason = "unsupported-entity" },
-                cancellationToken);
-            return false;
+            throw new PermanentEventException(
+                "unsupported-entity",
+                $"Unsupported entity type '{envelope.EntityType}'.");
         }
 
-        var payload = envelope.Payload.Deserialize<ProductSyncPayload>(EventEnvelopeSerializer.Options)
-            ?? throw new InvalidOperationException("Product event payload is missing.");
+        var expectedSubject = Subjects.ForOp(Sources.A, EntityTypes.Product, envelope.Op);
+        if (!string.Equals(message.Subject, expectedSubject, StringComparison.Ordinal))
+        {
+            throw new PermanentEventException(
+                "subject-mismatch",
+                $"Event subject '{message.Subject}' does not match operation '{envelope.Op}'.");
+        }
+
+        if (envelope.Payload.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        {
+            throw new PermanentEventException(
+                "missing-payload",
+                "Product event payload is missing.");
+        }
+
+        ProductSyncPayload payload;
+
+        try
+        {
+            payload = envelope.Payload.Deserialize<ProductSyncPayload>(EventEnvelopeSerializer.Options)
+                ?? throw new JsonException("Product event payload is missing.");
+        }
+        catch (JsonException exception)
+        {
+            throw new PermanentEventException(
+                "invalid-payload",
+                "Product event payload is invalid.",
+                exception);
+        }
 
         if (payload.Id != envelope.EntityId || payload.Version != envelope.Version)
         {
-            throw new InvalidOperationException("Product event payload does not match its envelope.");
+            throw new PermanentEventException(
+                "payload-mismatch",
+                "Product event payload does not match its envelope.");
         }
+
+        if (envelope.Op == EventOps.Delete && !payload.IsDeleted)
+        {
+            throw new PermanentEventException(
+                "delete-state-mismatch",
+                "Delete event payload is not marked deleted.");
+        }
+
+        if (envelope.Op == EventOps.Upsert && payload.IsDeleted)
+        {
+            throw new PermanentEventException(
+                "upsert-state-mismatch",
+                "Upsert event payload is marked deleted.");
+        }
+
+        var now = timeProvider.GetUtcNow();
+        metrics.SetInboxLagSeconds(Math.Max(0, (now - envelope.OccurredAt).TotalSeconds));
+        var streamSequence = message.Metadata is { } metadata
+            ? (long)metadata.Sequence.Stream
+            : (long?)null;
+        var deliveryCount = GetDeliveryCount(message);
+        var outcome = HandleOutcome.Applied;
 
         await using var scope = scopeFactory.CreateAsyncScope();
         var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<ProductsReplicaDbContext>>();
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
         var executionStrategy = context.Database.CreateExecutionStrategy();
 
-        return await executionStrategy.ExecuteAsync(async () =>
+        await executionStrategy.ExecuteAsync(async () =>
         {
             context.ChangeTracker.Clear();
+            outcome = HandleOutcome.Applied;
 
             await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
-            var now = timeProvider.GetUtcNow();
-            long? streamSequence = message.Metadata is { } metadata
-                ? (long)metadata.Sequence.Stream
-                : null;
+            var receivedAt = timeProvider.GetUtcNow();
 
             var inserted = await context.Database.ExecuteSqlInterpolatedAsync(
                 $"""
                  INSERT INTO products_replica.inbox (event_id, stream_sequence, received_at)
-                 VALUES ({envelope.EventId}, {streamSequence}, {now})
+                 VALUES ({envelope.EventId}, {streamSequence}, {receivedAt})
                  ON CONFLICT (event_id) DO NOTHING
                  """,
                 cancellationToken);
 
+            Chaos.KillPoint("consumer-after-inbox-insert");
+
             if (inserted == 0)
             {
+                outcome = HandleOutcome.Duplicate;
                 await transaction.CommitAsync(cancellationToken);
-                logger.LogInformation("Skipped duplicate event {EventId}.", envelope.EventId);
-                return true;
+                logger.LogInformation(
+                    "Skipped duplicate event {EventId} at stream sequence {StreamSequence}, delivery {DeliveryCount}.",
+                    envelope.EventId,
+                    streamSequence,
+                    deliveryCount);
+                return;
             }
 
-            await context.Database.ExecuteSqlInterpolatedAsync(
+            var updated = await context.Database.ExecuteSqlInterpolatedAsync(
                 $"""
                  INSERT INTO products_replica.products_replica
                      (id, name, price, version, is_deleted, updated_at, synced_at)
@@ -181,15 +287,154 @@ internal sealed class ProductsConsumerService(
                  """,
                 cancellationToken);
 
+            Chaos.KillPoint("consumer-after-replica-upsert");
+
             await transaction.CommitAsync(cancellationToken);
 
+            if (updated == 0)
+            {
+                outcome = HandleOutcome.Stale;
+                logger.LogInformation(
+                    "Skipped stale product event {EventId} for entity {EntityId} at version {Version}, stream sequence {StreamSequence}, delivery {DeliveryCount}.",
+                    envelope.EventId,
+                    envelope.EntityId,
+                    envelope.Version,
+                    streamSequence,
+                    deliveryCount);
+                return;
+            }
+
             logger.LogInformation(
-                "Applied product event {EventId} for entity {EntityId} at version {Version}.",
+                "Applied product event {EventId} for entity {EntityId} at version {Version}, stream sequence {StreamSequence}, delivery {DeliveryCount}.",
                 envelope.EventId,
                 envelope.EntityId,
-                envelope.Version);
-
-            return true;
+                envelope.Version,
+                streamSequence,
+                deliveryCount);
         });
+
+        return outcome;
+    }
+
+    private async Task DeadLetterOrRetryAsync(
+        INatsJSMsg<byte[]> message,
+        string reason,
+        Exception exception,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await DeadLetterAndTerminateAsync(message, reason, exception, cancellationToken);
+        }
+        catch (Exception deadLetterException)
+        {
+            logger.LogError(
+                deadLetterException,
+                "Failed to dead-letter event from {Subject} with reason {Reason}; message will be retried.",
+                message.Subject,
+                reason);
+
+            await NakAsync(message, GetRetryDelay(message), cancellationToken);
+        }
+    }
+
+    private async Task DeadLetterAndTerminateAsync(
+        INatsJSMsg<byte[]> message,
+        string reason,
+        Exception exception,
+        CancellationToken cancellationToken)
+    {
+        var options = natsOptions.Value;
+        var rawData = message.Data;
+        var eventId = rawData is null ? null : TryReadEventId(rawData);
+        var metadata = message.Metadata;
+        var streamSequence = metadata is { } metadataValue
+            ? (long)metadataValue.Sequence.Stream
+            : (long?)null;
+        var deliveryCount = GetDeliveryCount(message);
+        var deadLetter = new DeadLetterEnvelope(
+            eventId,
+            message.Subject,
+            metadata?.Stream,
+            streamSequence,
+            reason,
+            deliveryCount,
+            timeProvider.GetUtcNow(),
+            rawData is null ? null : Encoding.UTF8.GetString(rawData),
+            exception.ToString());
+
+        var ack = await jetStream.PublishAsync(
+            $"{options.DeadLetterSubjectPrefix}.product.failed",
+            DeadLetterEnvelopeSerializer.Serialize(deadLetter),
+            opts: new NatsJSPubOpts { MsgId = BuildDeadLetterMessageId(message, eventId) },
+            cancellationToken: cancellationToken);
+
+        if (ack.Error is not null)
+        {
+            throw new InvalidOperationException(
+                $"JetStream rejected dead letter for event {eventId?.ToString() ?? "unknown"}: {ack.Error.Description}");
+        }
+
+        metrics.ConsumerDeadLettered.Add(1);
+
+        logger.LogWarning(
+            "Dead-lettered event {EventId} from {Subject} with reason {Reason}, stream sequence {StreamSequence}, delivery {DeliveryCount}.",
+            eventId,
+            message.Subject,
+            reason,
+            streamSequence,
+            deliveryCount);
+
+        await message.AckTerminateAsync(
+            new AckOpts { TerminateReason = reason },
+            cancellationToken);
+        metrics.ConsumerTerminated.Add(1);
+    }
+
+    private async Task NakAsync(
+        INatsJSMsg<byte[]> message,
+        TimeSpan delay,
+        CancellationToken cancellationToken)
+    {
+        metrics.ConsumerNak.Add(1);
+        await message.NakAsync(new AckOpts { NakDelay = delay }, cancellationToken);
+    }
+
+    private static Guid? TryReadEventId(ReadOnlySpan<byte> data)
+    {
+        try
+        {
+            var eventId = EventEnvelopeSerializer.Deserialize(data).EventId;
+            return eventId == Guid.Empty ? null : eventId;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    private static TimeSpan GetRetryDelay(INatsJSMsg<byte[]> message)
+    {
+        var attempt = (int)Math.Clamp(GetDeliveryCount(message), 1, RetryDelays.Length);
+        return RetryDelays[attempt - 1];
+    }
+
+    private static long GetDeliveryCount(INatsJSMsg<byte[]> message) =>
+        message.Metadata is { } metadata ? (long)metadata.NumDelivered : 0;
+
+    private static string BuildDeadLetterMessageId(INatsJSMsg<byte[]> message, Guid? eventId) =>
+        message.Metadata is { } metadata
+            ? $"{metadata.Stream}.{metadata.Sequence.Stream}"
+            : eventId?.ToString() ?? Guid.NewGuid().ToString();
+
+    private enum HandleOutcome
+    {
+        Applied,
+        Duplicate,
+        Stale,
     }
 }

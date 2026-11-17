@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NatsSyncLab.SharedKernel.Abstractions;
+using NatsSyncLab.SharedKernel.Diagnostics;
 using NatsSyncLab.SharedKernel.Persistence;
 using Npgsql;
 
@@ -14,6 +15,7 @@ public static class DependencyInjection
     public static IServiceCollection AddSharedKernel(this IServiceCollection services)
     {
         services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<SyncMetrics>();
         return services;
     }
 

@@ -6,6 +6,8 @@ For the current behavior, see [README.md](./README.md). For setup and inspection
 
 ## Current state
 
+This section records the baseline before implementation. Phases 1 and 2 are now implemented; see the phase sections below.
+
 Already correct and should not be redesigned:
 
 - Product write and outbox row commit in one EF Core unit of work.
@@ -77,6 +79,8 @@ Use the built-in `Meter` API. This needs no new NuGet package and works with `do
 Use the existing `Chaos.KillPoint` helper. It is already a no-op unless `CHAOS_KILLPOINT` matches. Add kill points only to the process being tested.
 
 ## Phase 1: Dead-letter handling and permanent-error classification
+
+**Status:** Implemented.
 
 Highest value. Prevents silent loss.
 
@@ -175,10 +179,10 @@ This ordering is the same rule as the normal flow: persist the side effect, then
 
 ### 1.5 Handle exhausted deliveries
 
-In the catch block around `HandleAsync`, read the delivery count from message metadata. On the final attempt:
+In the catch block around `HandleAsync`, read the delivery count from message metadata. Reserve the final delivery attempt for a failed dead-letter publish:
 
 ```text
-if (deliveryCount >= MaxDeliver)
+if (deliveryCount >= MaxDeliver - 1)
     dead-letter the message, then terminate
 else
     nak with backoff
@@ -186,7 +190,7 @@ else
 
 For messages that fail permanently on the first attempt, dead-letter and terminate immediately. Do not consume all five attempts on a deterministic validation failure.
 
-Use a named constant for `MaxDeliver` instead of repeating `5`.
+Use named constants for `MaxDeliver` and the dead-letter delivery threshold instead of repeating `5`.
 
 ### 1.6 Expose the DLQ for inspection
 
@@ -208,17 +212,20 @@ Update `README.md` limitations once the DLQ exists.
 | `SharedKernel/.../Contracts/DeadLetterEnvelope.cs` | New contract |
 | `BackendB/.../Messaging/PermanentEventException.cs` | New exception type |
 | `BackendB/.../Messaging/ProductsConsumerService.cs` | Classify, publish DLQ, terminate, backoff |
-| `setup.md`, `reference.md`, `README.md` | Document the stream and behavior |
+| `tests/NatsSyncLab.SharedKernel.UnitTests/DeadLetterEnvelopeTests.cs` | Envelope serialization tests |
+| `setup.md`, `reference.md`, `README.md`, `reading_summary.md` | Document the stream and behavior |
 
 ### Phase 1 acceptance criteria
 
 - An invalid envelope produces one DLQ message and the original message is terminated.
 - A payload/envelope mismatch produces one DLQ message and is not retried five times.
-- A database outage retries with backoff, then dead-letters after `MaxDeliver` if NATS is reachable.
+- A database outage retries with backoff, then dead-letters before the final delivery attempt if NATS is reachable.
 - A successful event still produces no DLQ message.
 - Duplicate redelivery of a DLQ'd event does not create duplicate DLQ entries within the dedupe window.
 
 ## Phase 2: Outbox and inbox retention
+
+**Status:** Implemented as a startup-only cleanup.
 
 ### 2.1 Add retention options
 
@@ -227,7 +234,6 @@ Backend A, `appsettings.json`:
 ```json
 "Outbox": {
   "RetentionDays": 7,
-  "CleanupIntervalMinutes": 60,
   "BatchSize": 5000
 }
 ```
@@ -237,7 +243,6 @@ Backend B, `appsettings.json`:
 ```json
 "Inbox": {
   "RetentionDays": 8,
-  "CleanupIntervalMinutes": 60,
   "BatchSize": 5000
 }
 ```
@@ -245,8 +250,8 @@ Backend B, `appsettings.json`:
 Add strongly typed options and validate:
 
 - retention days must be greater than zero;
-- inbox retention must be greater than the stream `MaxAge` in days, or log a startup warning;
-- batch size must be greater than zero.
+- batch size must be greater than zero;
+- inbox retention is configured above the stream `MaxAge` (7 days).
 
 ### 2.2 Outbox cleanup service
 
@@ -254,7 +259,7 @@ Add `OutboxCleanupService` to the Backend A Products infrastructure.
 
 Behavior:
 
-1. Wait for the configured interval.
+1. Run once when the backend starts.
 2. Delete published rows older than the retention window in batches.
 3. Repeat until a batch deletes fewer than `BatchSize` rows or the stopping token fires.
 
@@ -266,7 +271,7 @@ WHERE id IN (
     SELECT id
     FROM products.outbox
     WHERE published_at IS NOT NULL
-      AND published_at < now() - @retention
+      AND published_at < @cutoff
     ORDER BY id
     LIMIT @batchSize
 )
@@ -280,14 +285,14 @@ Register it in `AddProductsModuleInfrastructure` after the relay.
 
 Add `InboxCleanupService` to the Backend B ProductsReplica infrastructure.
 
-Use the same batching shape:
+Use the same startup-only batching shape:
 
 ```sql
 DELETE FROM products_replica.inbox
 WHERE event_id IN (
     SELECT event_id
     FROM products_replica.inbox
-    WHERE received_at < now() - @retention
+    WHERE received_at < @cutoff
     ORDER BY received_at
     LIMIT @batchSize
 )
@@ -295,30 +300,45 @@ WHERE event_id IN (
 
 Keep retention above the stream's `MaxAge`. Do not delete unprocessed work that a future two-phase inbox processor might still need; if that design is adopted later, change the filter to require a processed marker.
 
+### 2.4 Lab simplification
+
+Cleanup runs only at startup. Add this comment to both services:
+
+```csharp
+// Lab simplification: cleanup runs once at startup.
+// In production, use a periodic hosted service, TickerQ, Quartz, or an external scheduler.
+```
+
+A long-running backend keeps accumulating rows until the next restart. That is acceptable for the lab.
+
 ### Phase 2 files
 
 | File | Change |
 | --- | --- |
-| `BackendA/.../Messaging/OutboxCleanupService.cs` | New hosted service |
+| `BackendA/.../Messaging/OutboxCleanupService.cs` | New startup-only hosted service |
 | `BackendA/.../Persistence/OutboxRetentionOptions.cs` | New options type |
 | `BackendA/.../DependencyInjection.cs` | Register options and cleanup service |
 | `BackendA/NatsSyncLab.BackendA.AppHost/appsettings.json` | Add `Outbox` section |
-| `BackendB/.../Messaging/InboxCleanupService.cs` | New hosted service |
+| `BackendB/.../Messaging/InboxCleanupService.cs` | New startup-only hosted service |
 | `BackendB/.../Persistence/InboxRetentionOptions.cs` | New options type |
 | `BackendB/.../DependencyInjection.cs` | Register options and cleanup service |
 | `BackendB/NatsSyncLab.BackendB.AppHost/appsettings.json` | Add `Inbox` section |
+| `README.md`, `setup.md`, `reference.md`, `reading_summary.md` | Document retention behavior |
 
 No EF migration is required for retention; it only deletes existing rows.
 
 ### Phase 2 acceptance criteria
 
+- Cleanup runs once per backend startup.
 - Published outbox rows older than the window are removed.
 - Unpublished outbox rows are never removed.
 - Inbox rows older than the window are removed.
 - A cleanup batch does not lock either table for the whole run.
-- Startup fails or warns when inbox retention is shorter than stream retention.
+- Invalid retention or batch settings fail startup through options validation.
 
 ## Phase 3: Observability
+
+**Status:** Implemented.
 
 ### 3.1 Add a shared metrics class
 
@@ -339,9 +359,10 @@ Counters:
 - `consumer.terminated`
 - `consumer.errors`
 
-Histogram:
+Histograms:
 
 - `consumer.processing.duration_ms`
+- `outbox.batch.duration_ms`
 
 Observable gauges:
 
@@ -349,7 +370,7 @@ Observable gauges:
 - `inbox.lag_seconds`
 - `consumer.last_delivery_count`
 
-For gauges, keep a cached value updated by a lightweight background timer rather than querying the database inside the metric callback.
+Keep a cached value for each gauge instead of querying the database inside the metric callback. The relay samples `outbox.backlog`; the consumer updates `inbox.lag_seconds` and `consumer.last_delivery_count`.
 
 ### 3.2 Instrument the relay
 
@@ -384,11 +405,11 @@ If dashboards are wanted later, add `OpenTelemetry.Exporter.OpenTelemetryProtoco
 | File | Change |
 | --- | --- |
 | `SharedKernel/.../Diagnostics/SyncMetrics.cs` | New meter and instruments |
+| `SharedKernel/.../DependencyInjection.cs` | Register the metrics singleton |
 | `BackendA/.../Messaging/OutboxRelayService.cs` | Record metrics and enrich logs |
+| `BackendA/.../Messaging/OutboxCleanupService.cs` | Count deleted rows |
 | `BackendB/.../Messaging/ProductsConsumerService.cs` | Record metrics and enrich logs |
-| `BackendA/.../DependencyInjection.cs` | Register metrics if a singleton is needed |
-| `BackendB/.../DependencyInjection.cs` | Register metrics if a singleton is needed |
-| `README.md` / `setup.md` | Document `dotnet-counters` usage |
+| `README.md` / `setup.md` / `reference.md` | Document `dotnet-counters` usage and instruments |
 
 ### Phase 3 acceptance criteria
 
@@ -398,6 +419,8 @@ If dashboards are wanted later, add `OpenTelemetry.Exporter.OpenTelemetryProtoco
 - Duplicate skips and stale-version skips are distinguishable in metrics/logs.
 
 ## Phase 4: Chaos kill points and backoff
+
+**Status:** Implemented.
 
 ### 4.1 Add kill points
 
@@ -424,17 +447,17 @@ Guard is already provided by the `CHAOS_KILLPOINT` environment variable.
 
 ### 4.2 Add exponential backoff
 
-Replace the fixed `RetryDelay` NAK with a capped backoff:
+Replace the fixed NAK delay with a capped backoff computed from `NumDelivered`:
 
 ```text
-attempt 1: 1s
-attempt 2: 5s
-attempt 3: 15s
-attempt 4: 30s
-attempt 5: terminal handling
+delivery 1: 1s
+delivery 2: 5s
+delivery 3: 15s
+delivery 4: dead-letter attempt; if the dead-letter publish fails, retry after 30s
+delivery 5: retry the dead-letter publish, then terminal
 ```
 
-Compute from `NumDelivered`. Keep a small fixed delay for NATS message-level errors.
+Keep a small fixed 2-second delay for NATS message-level errors.
 
 ### Phase 4 files
 
@@ -483,7 +506,7 @@ Use the scenarios in `README.md` and the new chaos hooks:
 3. NATS down, A/B up.
 4. B down, then NATS down.
 5. Invalid payload -> DLQ.
-6. DB down during consume -> retries, then DLQ after `MaxDeliver`.
+6. DB down during consume -> retries, then DLQ before the final delivery attempt.
 7. Duplicate delivery -> inbox skip.
 8. Old version -> version guard skip.
 9. Retention cleanup -> old rows removed, new rows kept.

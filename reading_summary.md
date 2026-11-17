@@ -242,36 +242,36 @@ The checklist above was applied to the current code. Results are based on the co
 
 | # | Checklist item | Result | Evidence / notes |
 | --- | --- | --- | --- |
-| 1 | Ack only after the durable side effect commits | **Pass** | Inbox + replica commit at `ProductsConsumerService.cs:184`, ack at `:89`; invalid events terminate without DB writes. |
-| 2 | Outbox marked published only after the broker confirms storage | **Pass** | `OutboxRelayService.cs:73-86` checks `ack.Error` before `MarkPublished`; save/commit at `:88-89`. This is equivalent to `EnsureSuccess()`. |
-| 3 | Crash between publish and mark causes a duplicate publish, and the consumer handles it | **Pass with caveat** | `MsgId = EventId` at `:76`; 10-minute dedupe window (`NatsOptions.cs:13`); the inbox primary key dedupes beyond that window. |
+| 1 | Ack only after the durable side effect commits | **Pass** | Inbox + replica commit at `ProductsConsumerService.cs:292`, ack at `:112`; permanent failures are dead-lettered and terminated at `:319-394`. |
+| 2 | Outbox marked published only after the broker confirms storage | **Pass** | `OutboxRelayService.cs:87-99` checks `ack.Error` before `MarkPublished`; save/commit at `:104-108`. This is equivalent to `EnsureSuccess()`. |
+| 3 | Crash between publish and mark causes a duplicate publish, and the consumer handles it | **Pass with caveat** | `MsgId = EventId` at `:90`; 10-minute dedupe window (`NatsOptions.cs:17`); the inbox primary key dedupes beyond that window. |
 | 4 | Deduplication keyed by a stable message/event ID with a unique constraint | **Pass** | Outbox unique `event_id` (Backend A migration `:54-58`); inbox primary key `event_id` (Backend B migration `:26-29`). |
 | 5 | Inbox write in the same transaction as the side effect, or a two-phase inbox processor | **Pass by design** | This lab is an inline idempotent consumer, not the article's two-phase inbox processor. The article says this is valid when side effects are transactional. |
-| 6 | Version guard rejects stale events | **Pass** | `WHERE products_replica.version < EXCLUDED.version` at `ProductsConsumerService.cs:180`. |
-| 7 | Stream retention mode correct for the workload | **Pass** | `Limits` + `File` (`JetStreamInitializer.cs:34-37`), with a 7-day `MaxAge` (`NatsOptions.cs:15`). Fits a replayable event log rather than a job queue. |
-| 8 | `AckWait` and `MaxDeliver` sized for real processing time | **Pass with caveat** | 30 seconds / 5 attempts (`ProductsConsumerService.cs:53-54`). Adequate for a quick DB upsert; no in-progress ack if work exceeds 30 seconds. |
-| 9 | Transient errors retried, permanent errors terminated | **Partial** | Exceptions NAK with a fixed 2-second delay (`:94`); invalid envelopes and unsupported entity types terminate (`:111`, `:123`). Payload mismatch and missing payload throw and are retried as transient (`:130`, `:134`) even though they are likely permanent. |
-| 10 | Dead-letter handling | **Gap** | None. Terminated messages are only logged; messages exhausting `MaxDeliver` are dropped. |
+| 6 | Version guard rejects stale events | **Pass** | `WHERE products_replica.version < EXCLUDED.version` at `ProductsConsumerService.cs:286`. |
+| 7 | Stream retention mode correct for the workload | **Pass** | `Limits` + `File` (`JetStreamInitializer.cs:41-45`), with a 7-day event `MaxAge` and a 30-day, 20 MB dead-letter stream (`NatsOptions.cs:19-23`). Fits a replayable event log rather than a job queue. |
+| 8 | `AckWait` and `MaxDeliver` sized for real processing time | **Pass with caveat** | 30 seconds / 5 attempts (`ProductsConsumerService.cs:69-70`). Adequate for a quick DB upsert; no in-progress ack if work exceeds 30 seconds. |
+| 9 | Transient errors retried, permanent errors terminated | **Pass** | Transient failures NAK after 1s/5s/15s, with 30s after a failed dead-letter publish (`ProductsConsumerService.cs:145`, `:337`); permanent failures are classified (`:166-225`) and dead-lettered (`:319-394`). |
+| 10 | Dead-letter handling | **Pass** | `B_DEAD_LETTER` stream on `b.deadletter.>`; permanent failures and exhausted retries are published before the original is terminated (`ProductsConsumerService.cs:319-394`). |
 | 11 | Long-running work protected with in-progress acks | **Gap (low priority)** | Not used. Acceptable for the current millisecond-scale workload. |
-| 12 | Redelivery / ack / term / processing lag observable | **Gap** | Only logs. No metrics, no delivery-count logging, no outbox backlog, inbox lag, or redelivery counters. |
-| 13 | Inbox/outbox bounded by retention, partitioning, or cleanup | **Gap** | Both tables grow indefinitely; published outbox rows are never purged. |
+| 12 | Redelivery / ack / term / processing lag observable | **Pass with caveat** | In-process `System.Diagnostics.Metrics` meter `NatsSyncLab` exposes publish/cleanup, processed/duplicate/stale/NAK/dead-letter/error counters, duration histograms, outbox backlog, inbox lag, and last delivery count. No exporter is configured. |
+| 13 | Inbox/outbox bounded by retention, partitioning, or cleanup | **Pass with caveat** | Startup-only cleanup: A deletes published outbox rows older than 7 days; B deletes inbox rows older than 8 days. Long-running processes still accumulate rows until restart. |
 | 14 | Ordering handled explicitly where it matters | **Pass with caveat** | A single relay with `ORDER BY id`, plus the version guard, makes reordering harmless. If Backend B is scaled to multiple consumer instances, ordering is not preserved. |
-| 15 | Lab benefits from missing source recommendations | **Identified** | Missing dead-letter handling, retention/cleanup, metrics, exponential backoff, permanent-error classification, and in-progress ack. |
+| 15 | Lab benefits from missing source recommendations | **Partially addressed** | Dead-letter handling, permanent-error classification, startup retention cleanup, metrics, chaos kill points, and consumer backoff are implemented. Remaining: in-progress ack and relay retry backoff. |
 
 ### Additional findings
 
-- **Outbox transaction holds locks during network I/O.** `OutboxRelayService.cs:56` opens the transaction, publishing happens at `:73`, and commit happens at `:89`. If NATS is down and `PublishAsync` waits for reconnection, the transaction and `FOR UPDATE SKIP LOCKED` row locks stay open. This is acceptable for the single-instance lab but risky for production.
-- **One timestamp for the whole batch.** `publishedAt` is computed once at `OutboxRelayService.cs:69`, so every row in a batch shares the same published time.
-- **Chaos kill points exist but are unused.** `SharedKernel/Chaos/Chaos.cs` is referenced only by its unit test. The relay and consumer do not call kill points, so crash-window scenarios such as after-commit-before-ack cannot be triggered with it.
+- **Outbox transaction holds locks during network I/O.** `OutboxRelayService.cs:65` opens the transaction, publishing happens at `:87`, and commit happens at `:108`. If NATS is down and `PublishAsync` waits for reconnection, the transaction and `FOR UPDATE SKIP LOCKED` row locks stay open. This is acceptable for the single-instance lab but risky for production.
+- **One timestamp for the whole batch.** `publishedAt` is computed once at `OutboxRelayService.cs:83`, so every row in a batch shares the same published time.
+- **Chaos kill points are wired.** `CHAOS_KILLPOINT` can trigger relay points around publish/save/commit and consumer points around inbox insert, replica upsert, and post-commit pre-ack. Clear the variable and restart to recover; leaving it armed makes every retry hit the same point.
 - **The lab matches the outbox article closely.** The inbox article's two-phase processor is a different valid design, not a defect in this lab.
 
 ### Priority
 
-1. Add a dead-letter table or subject, and terminate deterministic payload errors instead of retrying them.
-2. Add outbox/inbox retention or cleanup.
-3. Add basic observability: outbox backlog, inbox lag, delivery count, redelivery count, and ack/nak/term counts.
+1. **Done in Phase 1:** add a dead-letter stream and terminate deterministic payload errors instead of retrying them.
+2. **Done in Phase 2:** add startup-only outbox/inbox retention cleanup.
+3. **Done in Phase 3:** add basic observability for outbox backlog, inbox lag, delivery count, redelivery count, and ack/nak/term counts.
 4. Wire chaos kill points into the relay and consumer if failure scenarios are to be tested.
-5. Consider exponential backoff for NAK/relay retries and in-progress acks if processing time grows.
+5. **Partially done in Phase 4:** consumer NAK backoff is implemented. Still consider relay retry backoff and in-progress acks if processing time grows.
 
 ## Glossary
 

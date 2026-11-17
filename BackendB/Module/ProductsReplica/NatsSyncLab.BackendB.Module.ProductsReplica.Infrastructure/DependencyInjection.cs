@@ -21,7 +21,18 @@ public static class DependencyInjection
             DbConsts.MigrationHistoryTable,
             DbConsts.Schema);
 
+        services.AddOptions<InboxRetentionOptions>()
+            .Bind(configuration.GetSection(InboxRetentionOptions.SectionName))
+            .Validate(
+                options => options.RetentionDays > 0,
+                "Inbox retention days must be greater than zero.")
+            .Validate(
+                options => options.BatchSize > 0,
+                "Inbox cleanup batch size must be greater than zero.")
+            .ValidateOnStart();
+
         services.AddHostedService<ProductsConsumerService>();
+        services.AddHostedService<InboxCleanupService>();
         services.AddEndpoints(AssemblyReference.Assembly);
 
         return services;
